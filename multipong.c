@@ -1,7 +1,14 @@
 #include <Values.h>
 
+// Constants
+
 #define	kBaseResID			128
 #define	kTicks				1L
+#define	kRandomUpperLimit	32768
+#define	kVisible			true
+#define	kBringToFront		(WindowPtr)-1L
+#define	kLeaveInBack		0
+#define	kHasGoAway			true
 
 #define	kGameWindow			0
 #define kAboutWindow		kBaseResID
@@ -9,179 +16,161 @@
 #define kThinkWindow		kBaseResID+1
 #define kThinkText			kBaseResID+1
 
-#define	mApple				kBaseResID
-#define	iAbout				1
-
-#define	mFile				kBaseResID+1
-#define iNew				1
-#define	iStartOver			2
-#define	iEndGame			3
-#define	iClose				4
-#define	iQuit				6
-
-#define	mEdit				kBaseResID+2
-
-#define	mWindow				kBaseResID+3
-
-#define	mExtras				kBaseResID+4
-#define	iThink				1
-
-#define	kStartingWinBuf		30
-#define	kVisible			true
-#define	kBringToFront		(WindowPtr)-1L
-#define	kLeaveInBack		0
-#define	kHasGoAway			true
-#define	kMenuBarHeight		20 // TODO: can Toolbox tell me this?
-
 #define	kNumGameWindows		4
 #define	kMultiPongWindow	0
 #define	kTopWindow			1
 #define	kBottomWindow		2
 #define	kPlayerWindow		3
 
-#define	kRandomUpperLimit	32768
+#define	kStartingWinBuf		30
+#define	kMenuBarHeight		20 // TODO: can Toolbox tell me this?
+
+#define	mApple				kBaseResID
+#define		iAbout			1
+#define	mFile				kBaseResID+1
+#define 	iNew			1
+#define		iStartOver		2
+#define		iEndGame		3
+#define		iClose			4
+#define		iQuit			6
+#define	mEdit				kBaseResID+2
+#define	mWindow				kBaseResID+3
+#define	mExtras				kBaseResID+4
+#define		iThink			1
+
 #define	kBallSize			20
 #define kMaxSpeed			5
 #define	kMinSpeed			2
 
-void		MenuInit( void );
-void		GameWindowInit( void );
-void		GameInit( void );
-void		EventLoop( void );
-void		HandleCloseWindow( WindowPtr window );
-void		HandleMouseDown( EventRecord *eventPtr );
-void		HandleMenuChoice( long menuChoice );
-void		HandleAppleChoice( short item );
-void		HandleFileChoice( short item );
-void		HandleEditChoice( short item );
-void		HandleWindowChoice( short item );
-void		HandleExtrasChoice( short item );
-void		RecalcBall( void );
+// Function prototypes
+
+void		Bail( void );
+void		CreateGameWindows( void );
+WindowPtr	CreateWindow( int whichOne );
 void		DisplayBall( void );
+short		DisplayBallInWindow( WindowPtr window );
+void		DisplayResults( void );
+void		DoUpdate( EventRecord *event );
+
+void 		EndGame( void );
 void		EraseBall( void );
 short 		EraseBallInWindow( WindowPtr window );
-short		DisplayBallInWindow( WindowPtr window );
-void		RandomRect( Rect *rectPtr );
+void		EventLoop( void );
+void		GameLoop( void );
+
+void		HandleAppleChoice( short item );
+void		HandleCloseWindow( WindowPtr window );
+void		HandleEditChoice( short item );
+void		HandleExtrasChoice( short item );
+void		HandleFileChoice( short item );
+void		HandleMenuChoice( long menuChoice );
+void		HandleMouseDown( EventRecord *eventPtr );
+void		HandleWindowChoice( short item );
+
+void		InitMenu( void );
+void		InitToolBox( void );
+
+void		LaunchBall( void );
 short		Randomize( short range );
-void		WriteStrPound ( int which );
-void		DoUpdate( EventRecord *event );
-void		ToolBoxInit( void );
-WindowPtr	WindowInit( int whichOne );
-void		bail( void );
-void 		CenterPict( PicHandle picture, Rect *destRectPtr );
+void		RandomRect( Rect *rectPtr );
+void		RecalcBall( void );
 void		ShowAboutWindow( void );
 void		StartGame( void );
-void 		EndGame( void );
-void		GameLoop( void );
-void		DisplayResults( void );
+void		WriteStrPound ( int which );
+
+// Globals
 
 Rect 		gBall;
-WindowPtr	gWindows[kNumGameWindows];
-short		gQuitting, gAboutVisible, gThinkVisible;
+WindowPtr	gWindows[ kNumGameWindows ];
 short		gHorizontal, gVertical;
+short		gQuitting, gAboutVisible, gThinkVisible = 0;
 short		gameOn, gPlayerScore, gOpponentScore = 0;
 
 
 int main( void ) {
-	ToolBoxInit();
-	MenuInit();
+	InitToolBox();
+	InitMenu();
 	
 	ShowAboutWindow();
 	EventLoop();
 	return 0;
 }
 
-void MenuInit( void ){
-	Handle			menuBar;
-	MenuHandle		menu;
+void Bail( void ) {
+	SysBeep(10);
+	ExitToShell();
+}
 
-	menuBar = GetNewMBar( kBaseResID );
-	SetMenuBar( menuBar );
+void CreateGameWindows( void ) {
+	Rect MultiPongBounds, TopBounds, BottomBounds, PlayerBounds;
+	int i;
 	
-	menu = GetMHandle( mApple );
-	AddResMenu( menu, 'DRVR' );
+	MultiPongBounds.top = kMenuBarHeight + kStartingWinBuf;
+	MultiPongBounds.left = kStartingWinBuf;
+	MultiPongBounds.right = ( screenBits.bounds.right  / 2 ) - kStartingWinBuf;
+	MultiPongBounds.bottom = screenBits.bounds.bottom - kStartingWinBuf;
+	
+	TopBounds.top = kMenuBarHeight + kStartingWinBuf;
+	TopBounds.left = MultiPongBounds.right + kStartingWinBuf;
+	TopBounds.right = TopBounds.left + ( screenBits.bounds.right  / 4 );
+	TopBounds.bottom = ( screenBits.bounds.bottom / 4 ) - kStartingWinBuf;
+	
+	BottomBounds.top = screenBits.bounds.bottom - ( screenBits.bounds.bottom / 4 ) + kStartingWinBuf;
+	BottomBounds.left = MultiPongBounds.right + kStartingWinBuf;
+	BottomBounds.right = BottomBounds.left + ( screenBits.bounds.right  / 4 );
+	BottomBounds.bottom = screenBits.bounds.bottom - kStartingWinBuf;
+
+	PlayerBounds.top = ( screenBits.bounds.bottom / 4 ) + kStartingWinBuf;
+	PlayerBounds.left = MultiPongBounds.right + kStartingWinBuf;
+	PlayerBounds.right = PlayerBounds.left + ( screenBits.bounds.right  / 4 );
+	PlayerBounds.bottom = 3* ( screenBits.bounds.bottom / 4 ) - kStartingWinBuf;
 		
-	DrawMenuBar();
-}
-
-
-void EventLoop( void ) {
-
-	while ( !gQuitting ) {
-		char theChar;
-		EventRecord event;
-	
-		if ( WaitNextEvent( everyEvent, &event, kTicks, nil ) ) {
-			switch ( event.what ) {
-				case mouseDown:
-					HandleMouseDown( &event );
-					break;
-				case keyDown:
-				case autoKey:
-					theChar = event.message & charCodeMask;
-					if ( (event.modifiers & cmdKey) != 0 ) HandleMenuChoice( MenuKey( theChar ) );
-					break;
-				case updateEvt:
-					DoUpdate( &event );
-					break;
-			}
-		} else if ( gameOn ) {
-			GameLoop();
-		}
-	}
-}
-
-void GameLoop( void ) {
-	EraseBall();
-	RecalcBall();
-	DisplayBall();
-}
-
-void StartGame( void ) {
-	MenuHandle		menu;
-	if ( gameOn ) return;
-
-	gPlayerScore = gOpponentScore = 0;
-	menu = GetMHandle( mFile );
-	DisableItem( menu, iNew );
-	EnableItem( menu, iStartOver );
-	EnableItem( menu, iEndGame );
-	
-	menu = GetMHandle( mWindow );
-	EnableItem( menu, 1 );
-	EnableItem( menu, 2 );
-	EnableItem( menu, 3 );
-	EnableItem( menu, 4 );
-
-	GameWindowInit();
-	GameInit();
-	
-	gameOn = true;
-}
-
-void EndGame( void ) {
-	MenuHandle		menu;
-	short i;
-	
-	if ( ! gameOn ) return;
-
-	menu = GetMHandle( mFile );
-	EnableItem( menu, iNew );
-	DisableItem( menu, iStartOver );
-	DisableItem( menu, iEndGame );
-
-	menu = GetMHandle( mWindow );
-	DisableItem( menu, 1 );
-	DisableItem( menu, 2 );
-	DisableItem( menu, 3 );
-	DisableItem( menu, 4 );
+	gWindows[kPlayerWindow] 	= NewWindow( 0L, &PlayerBounds, "\pPlayer", kVisible, noGrowDocProc, kLeaveInBack, kHasGoAway, 0);
+	gWindows[kBottomWindow]		= NewWindow( 0L, &BottomBounds, "\pBottom", kVisible, noGrowDocProc, kLeaveInBack, kHasGoAway, 0);
+	gWindows[kTopWindow] 		= NewWindow( 0L, &TopBounds, "\pTop", kVisible, noGrowDocProc, kLeaveInBack, kHasGoAway, 0);
+	gWindows[kMultiPongWindow]	= NewWindow( 0L, &MultiPongBounds, "\pMulti pong", kVisible, noGrowDocProc, kBringToFront, kHasGoAway, 0);
 
 	for ( i = 0; i < kNumGameWindows ; i++ ) {
-		DisposeWindow( gWindows[i] );
+		if ( !gWindows[i] )	Bail();
 	}
+}
 
-	gameOn = false;
+WindowPtr CreateWindow( int whichOne ) {
+	WindowPtr	window;
+	Rect		windRect;
+	
+	window = GetNewWindow( whichOne, nil, kBringToFront );
+	
+	if ( window == nil )
+		Bail();
 
+	SetWRefCon( window,(long)whichOne); 
+	ShowWindow( window );
+	return window;	
+}
+
+void DisplayBall( void ) {
+	int i;
+	for ( i = 0; i < kNumGameWindows; i++ ) {
+		DisplayBallInWindow( gWindows[i] );
+	}
+}
+
+short DisplayBallInWindow( WindowPtr window ) {
+		Rect ball = gBall;
+		Rect win = window->portRect;
+		Rect sect;
+					
+		SetPort( window );
+		GlobalToLocal(&topLeft(ball));
+		GlobalToLocal(&botRight(ball));
+			
+		if ( SectRect( &ball, &win, &sect ) ) {
+			PaintOval( &ball );
+			return true;
+		} else {
+			return false;
+		}
 }
 
 void DisplayResults( void ) {
@@ -215,36 +204,102 @@ void DoUpdate( EventRecord *event ) {
 	EndUpdate( window );
 }
 
-void HandleMouseDown( EventRecord *eventPtr ) {
-	WindowPtr	window;
-	short int	thePart;
-	long			menuChoice;
-
-	thePart = FindWindow( eventPtr->where, &window );
+void EndGame( void ) {
+	MenuHandle		menu;
+	short i;
 	
-	switch (thePart) {
-		case inMenuBar:
-			menuChoice = MenuSelect( eventPtr->where );
-			HandleMenuChoice( menuChoice );
-			break;
-		case inSysWindow:
-			SystemClick( eventPtr, window );
-			break;
-		case inContent:
-			SelectWindow( window );
-			break;
-		case inDrag:
-			EraseBall(); // hide the ball while you're dragging windows
-			DragWindow( window, eventPtr->where, &screenBits.bounds );
-			DisplayBall();
-			break;
-		case inGoAway:
-			if ( TrackGoAway( window, eventPtr->where ) ) HandleCloseWindow( window );
-			break;
+	if ( ! gameOn ) return;
+
+	menu = GetMHandle( mFile );
+	EnableItem( menu, iNew );
+	DisableItem( menu, iStartOver );
+	DisableItem( menu, iEndGame );
+
+	menu = GetMHandle( mWindow );
+	DisableItem( menu, 1 );
+	DisableItem( menu, 2 );
+	DisableItem( menu, 3 );
+	DisableItem( menu, 4 );
+
+	for ( i = 0; i < kNumGameWindows ; i++ ) {
+		DisposeWindow( gWindows[i] );
+	}
+
+	gameOn = false;
+
+}
+
+void EraseBall( void ) {
+	int i;
+	for ( i = 0; i < kNumGameWindows; i++ ) {
+		EraseBallInWindow( gWindows[i] );
 	}
 }
 
+short EraseBallInWindow( WindowPtr window ) {
+		Rect ball = gBall;
+		Rect win = window->portRect;
+		Rect sect;
+					
+		SetPort( window );
+		GlobalToLocal(&topLeft(ball));
+		GlobalToLocal(&botRight(ball));
+			
+		if ( SectRect( &ball, &win, &sect ) ) {
+			EraseRect( &ball );
+			return true;
+		} else {
+			return false;
+		}
+}
 
+void EventLoop( void ) {
+
+	while ( !gQuitting ) {
+		char theChar;
+		EventRecord event;
+	
+		if ( WaitNextEvent( everyEvent, &event, kTicks, nil ) ) {
+			switch ( event.what ) {
+				case mouseDown:
+					HandleMouseDown( &event );
+					break;
+				case keyDown:
+				case autoKey:
+					theChar = event.message & charCodeMask;
+					if ( (event.modifiers & cmdKey) != 0 ) HandleMenuChoice( MenuKey( theChar ) );
+					break;
+				case updateEvt:
+					DoUpdate( &event );
+					break;
+			}
+		} else if ( gameOn ) {
+			GameLoop();
+		}
+	}
+}
+
+void GameLoop( void ) {
+	EraseBall();
+	RecalcBall();
+	DisplayBall();
+}
+
+void HandleAppleChoice( short item ) { 
+	MenuHandle	appleMenu;
+	Str255 		accName;
+	short		accNumber;
+	
+	if ( item == iAbout ) {
+		ShowAboutWindow();
+		return;
+	} 
+	
+	appleMenu = GetMHandle( mApple );
+	GetItem( appleMenu, item, accName );
+	accNumber = OpenDeskAcc( accName );
+
+}
 
 void HandleCloseWindow( WindowPtr window ) {
 	switch ( GetWRefCon( window ) ) {
@@ -259,6 +314,44 @@ void HandleCloseWindow( WindowPtr window ) {
 			gThinkVisible = false;
 			DisposeWindow( window );
 			break;
+	}
+}
+
+void HandleEditChoice( short item ) { 
+	return;
+}
+
+void HandleExtrasChoice( short item ) { 
+	WindowPtr	window;
+
+	if ( item == iThink && !gThinkVisible ) {
+		window = CreateWindow( kThinkWindow );
+		SetPort( window );
+		WriteStrPound( kThinkText );
+		gThinkVisible = true;
+		return;
+	}
+}
+
+void HandleFileChoice( short item ) {
+	switch ( item ) {
+		case iNew:
+			StartGame();
+			break;
+		case iStartOver:
+			EndGame();
+			StartGame();
+			break;
+		case iEndGame:
+			DisplayResults();
+			EndGame();
+			break;
+		case iClose:
+			HandleCloseWindow( FrontWindow() );
+			break;
+		case iQuit:
+			gQuitting = true;
+			break;	
 	}
 }
 
@@ -291,56 +384,33 @@ void HandleMenuChoice( long menuChoice ) {
 	}
 }
 
-void HandleAppleChoice( short item ) { 
-	MenuHandle	appleMenu;
-	Str255 		accName;
-	short		accNumber;
-	
-	if ( item == iAbout ) {
-		ShowAboutWindow();
-		return;
-	} 
-	
-	appleMenu = GetMHandle( mApple );
-	GetItem( appleMenu, item, accName );
-	accNumber = OpenDeskAcc( accName );
-
-}
-
-void ShowAboutWindow( void ) {
+void HandleMouseDown( EventRecord *eventPtr ) {
 	WindowPtr	window;
-	if ( !gAboutVisible ) {
-		window = WindowInit( kAboutWindow );
-		SetPort( window );
-		WriteStrPound( kAboutText );
-		gAboutVisible = true;
-	}
-}
+	short int	thePart;
+	long			menuChoice;
 
-void HandleFileChoice( short item ) {
-	switch ( item ) {
-		case iNew:
-			StartGame();
+	thePart = FindWindow( eventPtr->where, &window );
+	
+	switch (thePart) {
+		case inMenuBar:
+			menuChoice = MenuSelect( eventPtr->where );
+			HandleMenuChoice( menuChoice );
 			break;
-		case iStartOver:
-			EndGame();
-			StartGame();
+		case inSysWindow:
+			SystemClick( eventPtr, window );
 			break;
-		case iEndGame:
-			DisplayResults();
-			EndGame();
+		case inContent:
+			SelectWindow( window );
 			break;
-		case iClose:
-			HandleCloseWindow( FrontWindow() );
+		case inDrag:
+			EraseBall(); // hide the ball while player is dragging windows
+			DragWindow( window, eventPtr->where, &screenBits.bounds );
+			DisplayBall();
 			break;
-		case iQuit:
-			gQuitting = true;
-			break;	
+		case inGoAway:
+			if ( TrackGoAway( window, eventPtr->where ) ) HandleCloseWindow( window );
+			break;
 	}
-}
-
-void HandleEditChoice( short item ) { 
-	return;
 }
 
 void HandleWindowChoice( short item ) {
@@ -349,55 +419,30 @@ void HandleWindowChoice( short item ) {
 	SelectWindow( gWindows[ item - 1 ] );
 }
 
-void HandleExtrasChoice( short item ) { 
-	WindowPtr	window;
+void InitMenu( void ){
+	Handle			menuBar;
+	MenuHandle		menu;
 
-	if ( item == iThink && !gThinkVisible ) {
-		window = WindowInit( kThinkWindow );
-		SetPort( window );
-		WriteStrPound( kThinkText );
-		gThinkVisible = true;
-		return;
-	}
-}
-
-
-
-void GameWindowInit( void ) {
-	Rect MultiPongBounds, TopBounds, BottomBounds, PlayerBounds;
-	int i;
+	menuBar = GetNewMBar( kBaseResID );
+	SetMenuBar( menuBar );
 	
-	MultiPongBounds.top = kMenuBarHeight + kStartingWinBuf;
-	MultiPongBounds.left = kStartingWinBuf;
-	MultiPongBounds.right = ( screenBits.bounds.right  / 2 ) - kStartingWinBuf;
-	MultiPongBounds.bottom = screenBits.bounds.bottom - kStartingWinBuf;
-	
-	TopBounds.top = kMenuBarHeight + kStartingWinBuf;
-	TopBounds.left = MultiPongBounds.right + kStartingWinBuf;
-	TopBounds.right = TopBounds.left + ( screenBits.bounds.right  / 4 );
-	TopBounds.bottom = ( screenBits.bounds.bottom / 4 ) - kStartingWinBuf;
-	
-	BottomBounds.top = screenBits.bounds.bottom - ( screenBits.bounds.bottom / 4 ) + kStartingWinBuf;
-	BottomBounds.left = MultiPongBounds.right + kStartingWinBuf;
-	BottomBounds.right = BottomBounds.left + ( screenBits.bounds.right  / 4 );
-	BottomBounds.bottom = screenBits.bounds.bottom - kStartingWinBuf;
-
-	PlayerBounds.top = ( screenBits.bounds.bottom / 4 ) + kStartingWinBuf;
-	PlayerBounds.left = MultiPongBounds.right + kStartingWinBuf;
-	PlayerBounds.right = PlayerBounds.left + ( screenBits.bounds.right  / 4 );
-	PlayerBounds.bottom = 3* ( screenBits.bounds.bottom / 4 ) - kStartingWinBuf;
+	menu = GetMHandle( mApple );
+	AddResMenu( menu, 'DRVR' );
 		
-	gWindows[kPlayerWindow] 	= NewWindow( 0L, &PlayerBounds, "\pPlayer", kVisible, noGrowDocProc, kLeaveInBack, kHasGoAway, 0);
-	gWindows[kBottomWindow]		= NewWindow( 0L, &BottomBounds, "\pBottom", kVisible, noGrowDocProc, kLeaveInBack, kHasGoAway, 0);
-	gWindows[kTopWindow] 		= NewWindow( 0L, &TopBounds, "\pTop", kVisible, noGrowDocProc, kLeaveInBack, kHasGoAway, 0);
-	gWindows[kMultiPongWindow]	= NewWindow( 0L, &MultiPongBounds, "\pMulti pong", kVisible, noGrowDocProc, kBringToFront, kHasGoAway, 0);
-
-	for ( i = 0; i < kNumGameWindows ; i++ ) {
-		if ( !gWindows[i] )	bail();
-	}
+	DrawMenuBar();
 }
 
-void GameInit( void ) {
+void InitToolBox( void ) {
+	InitGraf( &thePort );
+	InitFonts();
+	InitWindows();
+	InitMenus();
+	TEInit();
+	InitDialogs( nil );
+	InitCursor();
+}
+
+void LaunchBall( void ) {
     GetDateTime((unsigned long *)(&randSeed));
 	RandomRect( &gBall );
 	gHorizontal = Randomize( kMaxSpeed );
@@ -407,6 +452,24 @@ void GameInit( void ) {
 	gVertical = Randomize( kMaxSpeed );
 	if ( gVertical < kMinSpeed )
 		gVertical = kMinSpeed;
+}
+
+short Randomize(short range) {
+	long randomNumber;
+	randomNumber = Random();
+	if (randomNumber < 0) 
+		randomNumber *= -1;
+	
+	return ( (randomNumber*range) / kRandomUpperLimit );
+}
+
+void RandomRect (Rect *rectPtr) {
+	WindowPtr	window;
+	window = FrontWindow();
+	rectPtr->left   = Randomize(window->portRect.right - window->portRect.left);
+	rectPtr->right  = rectPtr->left + kBallSize;
+	rectPtr->top    = Randomize(window->portRect.bottom - window->portRect.top);
+	rectPtr->bottom  = rectPtr->top + kBallSize;
 }
 
 void RecalcBall( void ) {
@@ -431,109 +494,36 @@ void RecalcBall( void ) {
 
 }
 
-void DisplayBall( void ) {
-	int i;
-	for ( i = 0; i < kNumGameWindows; i++ ) {
-		DisplayBallInWindow( gWindows[i] );
+void ShowAboutWindow( void ) {
+	WindowPtr	window;
+	if ( !gAboutVisible ) {
+		window = CreateWindow( kAboutWindow );
+		SetPort( window );
+		WriteStrPound( kAboutText );
+		gAboutVisible = true;
 	}
 }
 
-void EraseBall( void ) {
-	int i;
-	for ( i = 0; i < kNumGameWindows; i++ ) {
-		EraseBallInWindow( gWindows[i] );
-	}
-}
+void StartGame( void ) {
+	MenuHandle		menu;
+	if ( gameOn ) return;
 
-
-short EraseBallInWindow( WindowPtr window ) {
-		Rect ball = gBall;
-		Rect win = window->portRect;
-		Rect sect;
-					
-		SetPort( window );
-		GlobalToLocal(&topLeft(ball));
-		GlobalToLocal(&botRight(ball));
-			
-		if ( SectRect( &ball, &win, &sect ) ) {
-			EraseRect( &ball );
-			return true;
-		} else {
-			return false;
-		}
-}
-
-short DisplayBallInWindow( WindowPtr window ) {
-		Rect ball = gBall;
-		Rect win = window->portRect;
-		Rect sect;
-					
-		SetPort( window );
-		GlobalToLocal(&topLeft(ball));
-		GlobalToLocal(&botRight(ball));
-			
-		if ( SectRect( &ball, &win, &sect ) ) {
-			PaintOval( &ball );
-			return true;
-		} else {
-			return false;
-		}
-}
-
-void RandomRect (Rect *rectPtr) {
-	WindowPtr	window;
-	window = FrontWindow();
-	rectPtr->left   = Randomize(window->portRect.right - window->portRect.left);
-	rectPtr->right  = rectPtr->left + kBallSize;
-	rectPtr->top    = Randomize(window->portRect.bottom - window->portRect.top);
-	rectPtr->bottom  = rectPtr->top + kBallSize;
-}
-
-short Randomize(short range) {
-	long randomNumber;
-	randomNumber = Random();
-	if (randomNumber < 0) 
-		randomNumber *= -1;
+	gPlayerScore = gOpponentScore = 0;
+	menu = GetMHandle( mFile );
+	DisableItem( menu, iNew );
+	EnableItem( menu, iStartOver );
+	EnableItem( menu, iEndGame );
 	
-	return ( (randomNumber*range) / kRandomUpperLimit );
-}
+	menu = GetMHandle( mWindow );
+	EnableItem( menu, 1 );
+	EnableItem( menu, 2 );
+	EnableItem( menu, 3 );
+	EnableItem( menu, 4 );
 
-void ToolBoxInit( void ) {
-	InitGraf( &thePort );
-	InitFonts();
-	InitWindows();
-	InitMenus();
-	TEInit();
-	InitDialogs( nil );
-	InitCursor();
-}
-
-WindowPtr WindowInit( int whichOne ) {
-	WindowPtr	window;
-	Rect		windRect;
+	CreateGameWindows();
+	LaunchBall();
 	
-	window = GetNewWindow( whichOne, nil, kBringToFront );
-	
-	if ( window == nil )
-		bail();
-
-	SetWRefCon( window,(long)whichOne); 
-	ShowWindow( window );
-	return window;	
-}
-
-void bail( void ) {
-	SysBeep(10);
-	ExitToShell();
-}
-
-void CenterPict( PicHandle picture, Rect *destRectPtr ) {
-	Rect windRect, pictRect;
-	windRect = *destRectPtr;
-	pictRect = (**(picture)).picFrame;
-	OffsetRect(&pictRect, windRect.left-pictRect.left, windRect.top-pictRect.top);
-	OffsetRect(&pictRect, (windRect.right-pictRect.right)/2, (windRect.bottom-pictRect.bottom)/2);
-	*destRectPtr = pictRect;
+	gameOn = true;
 }
 
 void WriteStrPound ( int which ) {
@@ -580,4 +570,4 @@ void WriteStrPound ( int which ) {
 		}
 	}
 
-}
+}
