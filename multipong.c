@@ -531,7 +531,11 @@ void HandleMouseDown( EventRecord *eventPtr ) {
 			break;
 		case inDrag:
 			if ( gameOn ) EraseBall(); // hide the ball while player is dragging windows
-			DragWindow( window, eventPtr->where, &screenBits.bounds );
+			if ( GetWRefCon( window ) == kMultiPongWindow ) { 
+				SelectWindow( window ) ;
+			} else {
+				DragWindow( window, eventPtr->where, &screenBits.bounds );
+			}
 			if ( gameOn ) { 
 				DisplayBall();
 				DrawPlayfield( window );
@@ -563,7 +567,8 @@ void InitMenu( void ){
 }
 
 void InitOpponent( void ) {
-	gOpponentYPosition = Randomize(gWindows[ kMultiPongWindow ]->portRect.bottom); 
+	gOpponentYPosition = Randomize(gWindows[ kMultiPongWindow ]->portRect.bottom / kGoalHeight); 
+	gOpponentYPosition += gWindows[ kMultiPongWindow ]->portRect.bottom / (kGoalHeight * 2);
 }
 
 void InitShapes( void ) {
@@ -668,6 +673,7 @@ void MoveBall( void ) {
 					gVertical = -gVertical;
 					gBall.top += gVertical*2;
 					gBall.top -= 1;
+					DrawPlayfield( gWindows[ kBottomWindow ] );
 				}
 				break;
 			case kPlayerWindow:
@@ -675,6 +681,7 @@ void MoveBall( void ) {
 					gHorizontal = -gHorizontal;
 					gBall.left += gHorizontal*2;
 					gBall.left -= 1;
+					DrawPlayfield( gWindows[ kPlayerWindow ] );
 				}
 				break;
 		}
@@ -734,7 +741,7 @@ short Randomize(short range) {
 void RandomRect (Rect *rectPtr) {
 	WindowPtr	window;
 	window = gWindows[ kMultiPongWindow ];
-	rectPtr->left   = Randomize(window->portRect.right / 2 - kBallSize ) + (window->portRect.right / 2);
+	rectPtr->left   = Randomize(( window->portRect.right / 2) - ( kBallSize * 2) ) + (window->portRect.right / 2);
 	rectPtr->right  = rectPtr->left + kBallSize;
 	rectPtr->top    = Randomize(window->portRect.bottom - kBallSize );
 	rectPtr->bottom  = rectPtr->top + kBallSize;
@@ -846,4 +853,4 @@ void WriteStrPound ( int which ) {
 		}
 	}
 
-}
+}
