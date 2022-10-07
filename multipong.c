@@ -57,6 +57,7 @@
 // Function prototypes
 
 void		Bail( void );
+void		ConcatStr255( StringPtr first, StringPtr second );
 void		CreateGameWindows( void );
 WindowPtr	CreateWindow( int whichOne );
 short		DetectCollision( RectPtr shape, WindowPtr win );
@@ -120,6 +121,14 @@ int main( void ) {
 void Bail( void ) {
 	SysBeep(10);
 	ExitToShell();
+}
+
+void ConcatStr255( StringPtr first, StringPtr second ) {
+	Byte *f = first;
+	Byte *s = second;
+	int fl  = *f; 
+	*f      = fl + *s;
+	BlockMove( s + 1, f + fl + 1, 255 - fl );
 }
 
 void CreateGameWindows( void ) {
@@ -252,11 +261,17 @@ void DisplayResults( void ) {
 }
 
 void DisplayScore( void ) {
-	StringPtr pm;
-	char message[255];
-	sprintf( message, "Player %d | Opponent %d", gPlayerScore, gOpponentScore );
-	pm = CtoPstr(message);
-	SetWTitle( gWindows[ kMultiPongWindow ], pm );
+	Str255 score = "\pPlayer ";
+	Str255 opponent = "\p | Opponent ";
+	Str255 pScore, oScore;
+	NumToString( gPlayerScore, pScore );
+	NumToString( gOpponentScore, oScore );
+	
+	ConcatStr255( score, pScore );
+	ConcatStr255( score, opponent );
+	ConcatStr255( score, oScore );
+	
+	SetWTitle( gWindows[ kMultiPongWindow ], score );
 }
 
 void DisposeGameWindows( void ) {
