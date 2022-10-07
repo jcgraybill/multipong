@@ -10,7 +10,6 @@
 #define	kLeaveInBack		0
 #define	kHasGoAway			true
 
-#define	kGameWindow			0
 #define kAboutWindow		kBaseResID
 #define	kAboutText			kBaseResID
 #define kThinkWindow		kBaseResID+1
@@ -23,7 +22,6 @@
 #define	kPlayerWindow		3
 
 #define	kStartingWinBuf		30
-#define	kMenuBarHeight		20 // TODO: can Toolbox tell me this?
 
 #define	mApple				kBaseResID
 #define		iAbout			1
@@ -39,18 +37,35 @@
 #define		iThink			1
 
 #define	kBallSize			20
-#define kMaxSpeed			5
+#define kMaxSpeed			4
 #define	kMinSpeed			2
+#define	kObjectWidth		8
+#define	kOpponentSpeed		2
+#define	kPaddleHeight		6
+#define	kGoalHeight			2
+#define	kBallColor			blackColor
+#define	kWallColor			blackColor
+#define	kPaddleColor		blackColor
+#define	kGoalColor			greenColor
+#define	kBallPattern		black
+#define	kFramePattern		black
+#define kGoalPattern		ltGray
+#define	kPaddlePattern		black
+#define	kWallPattern		dkGray
+#define	kNumShapes			7
 
 // Function prototypes
 
 void		Bail( void );
 void		CreateGameWindows( void );
 WindowPtr	CreateWindow( int whichOne );
+short		DetectCollision( RectPtr shape, WindowPtr win );
 void		DisplayBall( void );
 short		DisplayBallInWindow( WindowPtr window );
 void		DisplayResults( void );
+void		DisposeGameWindows( void );
 void		DoUpdate( EventRecord *event );
+void		DrawPlayfield( WindowPtr window );
 
 void 		EndGame( void );
 void		EraseBall( void );
@@ -68,12 +83,17 @@ void		HandleMouseDown( EventRecord *eventPtr );
 void		HandleWindowChoice( short item );
 
 void		InitMenu( void );
+void		InitOpponent( void );
+void		InitShapes( void );
 void		InitToolBox( void );
 
 void		LaunchBall( void );
+void		MoveBall( void );
+void		MoveOpponent( void );
 short		Randomize( short range );
 void		RandomRect( Rect *rectPtr );
-void		RecalcBall( void );
+void		ScoreOpponent( void );
+void		ScorePlayer( void );
 void		ShowAboutWindow( void );
 void		StartGame( void );
 void		WriteStrPound ( int which );
@@ -81,11 +101,12 @@ void		WriteStrPound ( int which );
 // Globals
 
 Rect 		gBall;
+Rect		gShapes[ kNumShapes ];
 WindowPtr	gWindows[ kNumGameWindows ];
 short		gHorizontal, gVertical;
 short		gQuitting, gAboutVisible, gThinkVisible = 0;
 short		gameOn, gPlayerScore, gOpponentScore = 0;
-
+short		gOpponentYPosition, gPaddleHeight;
 
 int main( void ) {
 	InitToolBox();
@@ -105,12 +126,12 @@ void CreateGameWindows( void ) {
 	Rect MultiPongBounds, TopBounds, BottomBounds, PlayerBounds;
 	int i;
 	
-	MultiPongBounds.top = kMenuBarHeight + kStartingWinBuf;
+	MultiPongBounds.top = MBarHeight + kStartingWinBuf;
 	MultiPongBounds.left = kStartingWinBuf;
 	MultiPongBounds.right = ( screenBits.bounds.right  / 2 ) - kStartingWinBuf;
 	MultiPongBounds.bottom = screenBits.bounds.bottom - kStartingWinBuf;
 	
-	TopBounds.top = kMenuBarHeight + kStartingWinBuf;
+	TopBounds.top = MBarHeight + kStartingWinBuf;
 	TopBounds.left = MultiPongBounds.right + kStartingWinBuf;
 	TopBounds.right = TopBounds.left + ( screenBits.bounds.right  / 4 );
 	TopBounds.bottom = ( screenBits.bounds.bottom / 4 ) - kStartingWinBuf;
@@ -132,7 +153,16 @@ void CreateGameWindows( void ) {
 
 	for ( i = 0; i < kNumGameWindows ; i++ ) {
 		if ( !gWindows[i] )	Bail();
+		SetWRefCon( gWindows[i], i );
 	}
+	
+	InitShapes();
+	InitOpponent();
+
+	for ( i = 0; i < kNumGameWindows ; i++ ) {
+		DrawPlayfield( gWindows[i] );
+	}
+
 }
 
 WindowPtr CreateWindow( int whichOne ) {
@@ -149,10 +179,39 @@ WindowPtr CreateWindow( int whichOne ) {
 	return window;	
 }
 
+short DetectCollision( RectPtr shape, WindowPtr win ) {	
+	Rect ball = gBall;
+	Rect winRect = win->portRect;
+	Rect winSect, shapeSect;
+	
+	if ( ! ((WindowPeek)win)->visible ) return false;
+	
+	SetPort( win );
+	GlobalToLocal(&topLeft(ball));
+	GlobalToLocal(&botRight(ball));
+		
+	if ( SectRect( &ball, &winRect, &winSect ) ) {
+		if ( SectRect( &ball, shape, &shapeSect ) ) {
+			return true;
+		} else {
+			return false;
+		}
+	} else {
+		return false;
+	}
+}
+
 void DisplayBall( void ) {
-	int i;
+	short i, ballIsVisible;
+	
+	ballIsVisible = false;
 	for ( i = 0; i < kNumGameWindows; i++ ) {
-		DisplayBallInWindow( gWindows[i] );
+		if ( DisplayBallInWindow( gWindows[i] ) ) 
+			ballIsVisible = true;
+	}
+	
+	if ( !ballIsVisible ) {
+		ScoreOpponent();
 	}
 }
 
@@ -160,12 +219,16 @@ short DisplayBallInWindow( WindowPtr window ) {
 		Rect ball = gBall;
 		Rect win = window->portRect;
 		Rect sect;
-					
+		
+		if ( ! ((WindowPeek)window)->visible ) return false;
+		
 		SetPort( window );
 		GlobalToLocal(&topLeft(ball));
 		GlobalToLocal(&botRight(ball));
 			
 		if ( SectRect( &ball, &win, &sect ) ) {
+			PenPat( kBallPattern );
+			ForeColor( kBallColor );
 			PaintOval( &ball );
 			return true;
 		} else {
@@ -174,9 +237,33 @@ short DisplayBallInWindow( WindowPtr window ) {
 }
 
 void DisplayResults( void ) {
-	// TODO - put actual results here
-	ParamText( "\p7", "\p3", "\pCongrats", "\pwon!");
+	Str255 opponentScore, playerScore;
+	NumToString(gOpponentScore, opponentScore);
+	NumToString(gPlayerScore, playerScore);
+	
+	if ( gPlayerScore == gOpponentScore ) {
+		ParamText( playerScore, opponentScore, "\pNice", "\ptied.");	
+	} else if ( gPlayerScore > gOpponentScore ) {
+		ParamText( playerScore, opponentScore, "\pCongrats", "\pwon!");	
+	} else {
+		ParamText( playerScore, opponentScore, "\pBummer", "\plost.");		
+	}
 	NoteAlert( kBaseResID, nil );
+}
+
+void DisplayScore( void ) {
+	StringPtr pm;
+	char message[255];
+	sprintf( message, "Player %d | Opponent %d", gPlayerScore, gOpponentScore );
+	pm = CtoPstr(message);
+	SetWTitle( gWindows[ kMultiPongWindow ], pm );
+}
+
+void DisposeGameWindows( void ) {
+	short i;
+	for ( i = 0; i < kNumGameWindows ; i++ ) {
+		DisposeWindow( gWindows[i] );
+	}
 }
 
 void DoUpdate( EventRecord *event ) {
@@ -195,20 +282,60 @@ void DoUpdate( EventRecord *event ) {
 			SetPort( window );
 			WriteStrPound( kThinkWindow );
 			break;
-		case kGameWindow:
+		default:
 			SetPort( window );
 			EraseBallInWindow( window );
 			DisplayBallInWindow( window );
+			DrawPlayfield( window );
 			break;
 	}
 	EndUpdate( window );
 }
 
+void DrawPlayfield( WindowPtr window ) {
+
+	SetPort( window );
+	PenSize( 1, 1 );
+	switch ( GetWRefCon( window ) ) {
+		case kMultiPongWindow:
+			PenPat( kWallPattern );
+			ForeColor( kWallColor );		
+			PaintRect( &gShapes[0] );
+			PaintRect( &gShapes[1] );
+			PenPat( kFramePattern );
+			FrameRect( &gShapes[0] );
+			FrameRect( &gShapes[1] );
+			PenPat( kGoalPattern );
+			ForeColor( kGoalColor );
+			PaintRect( &gShapes[2] );
+			break;
+		case kTopWindow:
+			PenPat( kWallPattern );
+			ForeColor( kWallColor );
+			PaintRect( &gShapes[4] );
+			PenPat( kFramePattern );
+			FrameRect( &gShapes[4] );
+			break;
+		case kPlayerWindow:
+			PenPat( kPaddlePattern );
+			ForeColor( kPaddleColor );
+			PaintRect( &gShapes[5] );
+			break;
+		case kBottomWindow:
+			PenPat( kWallPattern );
+			ForeColor( kWallColor );
+			PaintRect( &gShapes[6] );
+			PenPat( kFramePattern );
+			FrameRect( &gShapes[6] );
+			break;
+	}
+}
+
 void EndGame( void ) {
 	MenuHandle		menu;
-	short i;
 	
 	if ( ! gameOn ) return;
+	gameOn = false;
 
 	menu = GetMHandle( mFile );
 	EnableItem( menu, iNew );
@@ -221,11 +348,8 @@ void EndGame( void ) {
 	DisableItem( menu, 3 );
 	DisableItem( menu, 4 );
 
-	for ( i = 0; i < kNumGameWindows ; i++ ) {
-		DisposeWindow( gWindows[i] );
-	}
+	DisposeGameWindows();
 
-	gameOn = false;
 
 }
 
@@ -281,8 +405,11 @@ void EventLoop( void ) {
 
 void GameLoop( void ) {
 	EraseBall();
-	RecalcBall();
-	DisplayBall();
+	MoveBall();
+	if ( gameOn ) {
+		MoveOpponent();
+		DisplayBall();
+	}
 }
 
 void HandleAppleChoice( short item ) { 
@@ -303,9 +430,6 @@ void HandleAppleChoice( short item ) {
 
 void HandleCloseWindow( WindowPtr window ) {
 	switch ( GetWRefCon( window ) ) {
-		case kGameWindow: 
-			HideWindow( window );
-			break;
 		case kAboutWindow:
 			gAboutVisible = false;
 			DisposeWindow( window );
@@ -313,6 +437,9 @@ void HandleCloseWindow( WindowPtr window ) {
 		case kThinkWindow:
 			gThinkVisible = false;
 			DisposeWindow( window );
+			break;
+		default: 
+			HideWindow( window );
 			break;
 	}
 }
@@ -343,8 +470,8 @@ void HandleFileChoice( short item ) {
 			StartGame();
 			break;
 		case iEndGame:
-			DisplayResults();
 			EndGame();
+			DisplayResults();
 			break;
 		case iClose:
 			HandleCloseWindow( FrontWindow() );
@@ -403,9 +530,12 @@ void HandleMouseDown( EventRecord *eventPtr ) {
 			SelectWindow( window );
 			break;
 		case inDrag:
-			EraseBall(); // hide the ball while player is dragging windows
+			if ( gameOn ) EraseBall(); // hide the ball while player is dragging windows
 			DragWindow( window, eventPtr->where, &screenBits.bounds );
-			DisplayBall();
+			if ( gameOn ) { 
+				DisplayBall();
+				DrawPlayfield( window );
+			}
 			break;
 		case inGoAway:
 			if ( TrackGoAway( window, eventPtr->where ) ) HandleCloseWindow( window );
@@ -432,6 +562,47 @@ void InitMenu( void ){
 	DrawMenuBar();
 }
 
+void InitOpponent( void ) {
+	gOpponentYPosition = Randomize(gWindows[ kMultiPongWindow ]->portRect.bottom); 
+}
+
+void InitShapes( void ) {
+	short goalHeight = screenBits.bounds.bottom / kGoalHeight;
+	
+	gPaddleHeight = screenBits.bounds.bottom / kPaddleHeight;
+
+	gShapes[0].top = 1;
+	gShapes[0].left = 1;
+	gShapes[0].right = kObjectWidth;
+	gShapes[0].bottom = ( gWindows[ kMultiPongWindow ]->portRect.bottom - goalHeight ) / 2;
+
+	gShapes[1].top = ( ( gWindows[ kMultiPongWindow ]->portRect.bottom - goalHeight ) / 2 ) + goalHeight + 2;
+	gShapes[1].left = 1;
+	gShapes[1].right = kObjectWidth;
+	gShapes[1].bottom = gWindows[ kMultiPongWindow ]->portRect.bottom - 1;
+
+	gShapes[2].top = ( ( gWindows[ kMultiPongWindow ]->portRect.bottom - goalHeight ) / 2 ) + 1;
+	gShapes[2].left = 1;
+	gShapes[2].right = kObjectWidth;
+	gShapes[2].bottom = ( ( gWindows[ kMultiPongWindow ]->portRect.bottom - goalHeight ) / 2 ) + goalHeight;
+	
+	gShapes[4].top = 1;
+	gShapes[4].left = 1;
+	gShapes[4].right = gWindows[ kTopWindow ]->portRect.right - 1;
+	gShapes[4].bottom = kObjectWidth;
+	
+	gShapes[5].top = ( gWindows[ kPlayerWindow ]->portRect.bottom - gPaddleHeight ) / 2;
+	gShapes[5].left = gWindows[ kPlayerWindow ]->portRect.right - kObjectWidth;
+	gShapes[5].right = gWindows[ kPlayerWindow ]->portRect.right - 1;
+	gShapes[5].bottom = gShapes[5].top + gPaddleHeight;
+	
+	gShapes[6].top = gWindows[ kBottomWindow ]->portRect.bottom - kObjectWidth;
+	gShapes[6].left = 1;
+	gShapes[6].right = gWindows[ kBottomWindow ]->portRect.right - 1;
+	gShapes[6].bottom = gWindows[ kBottomWindow ]->portRect.bottom - 1;
+
+}
+
 void InitToolBox( void ) {
 	InitGraf( &thePort );
 	InitFonts();
@@ -452,9 +623,106 @@ void LaunchBall( void ) {
 	gVertical = Randomize( kMaxSpeed );
 	if ( gVertical < kMinSpeed )
 		gVertical = kMinSpeed;
+	
+	if ( gBall.top > screenBits.bounds.bottom / 2 ) 
+		gVertical = -gVertical;
 }
 
-short Randomize(short range) {
+void MoveBall( void ) {
+    int i;
+    
+    gBall.top += gVertical;
+    gBall.left += gHorizontal;
+    
+	for ( i = 0; i < kNumGameWindows; i++ ) {
+		switch( i ) {
+			case kMultiPongWindow:
+				if ( DetectCollision( &gShapes[ 0 ], gWindows[ kMultiPongWindow ] ) ) {
+					gHorizontal = -gHorizontal;
+					gBall.left += gHorizontal*2;
+					gBall.left += 1;
+				}
+				if ( DetectCollision( &gShapes[ 1 ], gWindows[ kMultiPongWindow ] ) ) {
+					gHorizontal = -gHorizontal;
+					gBall.left += gHorizontal*2;
+					gBall.left += 1;
+				}
+				if ( DetectCollision( &gShapes[ 2 ], gWindows[ kMultiPongWindow ] ) ) {
+					ScorePlayer();
+				}
+				if ( DetectCollision( &gShapes[ 3 ], gWindows[ kMultiPongWindow ] ) ) {
+					gHorizontal = -gHorizontal;
+					gBall.left += gHorizontal*2;
+					gBall.left += 1;
+				}
+				break;
+			case kTopWindow:
+				if ( DetectCollision( &gShapes[ 4 ], gWindows[ kTopWindow ] ) ) {
+					gVertical = -gVertical;
+					gBall.top += gVertical*2;
+					gBall.top += 1;
+				}
+				break;
+			case kBottomWindow:
+				if ( DetectCollision( &gShapes[ 6 ], gWindows[ kBottomWindow ] ) ) {
+					gVertical = -gVertical;
+					gBall.top += gVertical*2;
+					gBall.top -= 1;
+				}
+				break;
+			case kPlayerWindow:
+				if ( DetectCollision( &gShapes[ 5 ], gWindows[ kPlayerWindow ] ) ) {
+					gHorizontal = -gHorizontal;
+					gBall.left += gHorizontal*2;
+					gBall.left -= 1;
+				}
+				break;
+		}
+	}
+    
+    gBall.bottom = gBall.top + kBallSize;
+	gBall.right = gBall.left + kBallSize;
+
+}
+
+void MoveOpponent( void ) {
+	short ballYPosition;
+	Rect ball = gBall;
+	Rect eraseMe;
+		
+	SetPort( gWindows[ kMultiPongWindow ] );
+
+	GlobalToLocal(&topLeft(ball));
+	GlobalToLocal(&botRight(ball));
+	
+	ballYPosition = ball.bottom - ( kBallSize / 2 );
+	
+	if ( ballYPosition > gOpponentYPosition ) {
+		eraseMe.top = gOpponentYPosition - gPaddleHeight / 2;
+		eraseMe.bottom = eraseMe.top + 1;
+		gOpponentYPosition++;
+	} else if ( ballYPosition < gOpponentYPosition ) {
+		eraseMe.top = ( gOpponentYPosition + gPaddleHeight / 2 ) - 1;
+		eraseMe.bottom = eraseMe.top + 1;
+		gOpponentYPosition--;
+	}
+	
+	gShapes[3].top = gOpponentYPosition - gPaddleHeight / 2;
+	gShapes[3].bottom = gShapes[3].top + gPaddleHeight;
+	gShapes[3].left = 1 + kObjectWidth + 1;
+	gShapes[3].right = gShapes[3].left + kObjectWidth;
+	
+	PenPat( kPaddlePattern );
+	ForeColor( kPaddleColor );
+	PaintRect( &gShapes[3] );
+	
+	eraseMe.left = gShapes[3].left;
+	eraseMe.right = gShapes[3].right;
+	EraseRect( &eraseMe );
+	
+}
+
+short Randomize(short range) {
 	long randomNumber;
 	randomNumber = Random();
 	if (randomNumber < 0) 
@@ -465,33 +733,41 @@ short Randomize(short range) {
 
 void RandomRect (Rect *rectPtr) {
 	WindowPtr	window;
-	window = FrontWindow();
-	rectPtr->left   = Randomize(window->portRect.right - window->portRect.left);
+	window = gWindows[ kMultiPongWindow ];
+	rectPtr->left   = Randomize(window->portRect.right / 2 - kBallSize ) + (window->portRect.right / 2);
 	rectPtr->right  = rectPtr->left + kBallSize;
-	rectPtr->top    = Randomize(window->portRect.bottom - window->portRect.top);
+	rectPtr->top    = Randomize(window->portRect.bottom - kBallSize );
 	rectPtr->bottom  = rectPtr->top + kBallSize;
 }
 
-void RecalcBall( void ) {
-    
-    gBall.top += gVertical;
-    if ((gBall.top < screenBits.bounds.top) ||
-        (gBall.bottom > screenBits.bounds.bottom)) {
-        gVertical *= -1;
-        gBall.top += 2*gVertical;
-    }
-    
-    gBall.bottom = gBall.top + kBallSize;
-    
-    gBall.left += gHorizontal;
-    if ((gBall.left < screenBits.bounds.left) ||
-        (gBall.right > screenBits.bounds.right)) {
-        gHorizontal *= -1;
-        gBall.left += 2*gHorizontal;
-    }
+void ScoreOpponent( void ) {
+	gOpponentScore++;
+	SysBeep( 10 );
+	
+	if ( gPlayerScore < 7 && gOpponentScore < 7 ) {
+		DisposeGameWindows();
+		CreateGameWindows();
+		DisplayScore();
+		LaunchBall();
+	} else { 
+		EndGame();
+		DisplayResults();
+	}
+}
 
-	gBall.right = gBall.left + kBallSize;
-
+void ScorePlayer( void ) {
+	gPlayerScore++;
+	SysBeep( 10 );
+	
+	if ( gPlayerScore < 7 && gOpponentScore < 7 ) {
+		DisposeGameWindows();
+		CreateGameWindows();
+		DisplayScore();
+		LaunchBall();
+	} else { 
+		EndGame();
+		DisplayResults();
+	}
 }
 
 void ShowAboutWindow( void ) {
@@ -570,4 +846,4 @@ void WriteStrPound ( int which ) {
 		}
 	}
 
-}
+}
