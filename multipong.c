@@ -37,8 +37,8 @@
 #define		iThink			1
 
 #define	kBallSize			20
-#define kMaxSpeed			4
-#define	kMinSpeed			2
+#define kMaxSpeed			3
+#define	kMinSpeed			1
 #define	kObjectWidth		8
 #define	kOpponentSpeed		2
 #define	kPaddleHeight		6
@@ -72,7 +72,7 @@ void 		EndGame( void );
 void		EraseBall( void );
 short 		EraseBallInWindow( WindowPtr window );
 void		EventLoop( void );
-void		GameLoop( void );
+void		GameLoop( int steps );
 
 void		HandleAppleChoice( short item );
 void		HandleCloseWindow( WindowPtr window );
@@ -108,6 +108,7 @@ short		gHorizontal, gVertical;
 short		gQuitting, gAboutVisible, gThinkVisible = 0;
 short		gameOn, gPlayerScore, gOpponentScore = 0;
 short		gOpponentYPosition, gPaddleHeight;
+int			gLastTick;
 
 int main( void ) {
 	InitToolBox();
@@ -192,7 +193,7 @@ short DetectCollision( RectPtr shape, WindowPtr win ) {
 	Rect ball = gBall;
 	Rect winRect = win->portRect;
 	Rect winSect, shapeSect;
-	
+		
 	if ( ! ((WindowPeek)win)->visible ) return false;
 	
 	SetPort( win );
@@ -201,7 +202,22 @@ short DetectCollision( RectPtr shape, WindowPtr win ) {
 		
 	if ( SectRect( &ball, &winRect, &winSect ) ) {
 		if ( SectRect( &ball, shape, &shapeSect ) ) {
-			return true;
+			RgnHandle shapeRegion, overlapRegion, visibleRegion;
+
+			// Opponent/goal are active even if occluded by other windows.
+			if ( GetWRefCon( win ) == kMultiPongWindow ) 
+				return true;
+
+			shapeRegion = NewRgn();
+			overlapRegion = NewRgn();
+			visibleRegion = ((WindowPeek)win)->port.visRgn;
+
+			RectRgn(shapeRegion, &shapeSect);
+			SectRgn( shapeRegion, visibleRegion, overlapRegion );
+			if ( EmptyRgn(overlapRegion) ) 
+				return false;
+			else
+				return true;
 		} else {
 			return false;
 		}
@@ -413,16 +429,20 @@ void EventLoop( void ) {
 					break;
 			}
 		} else if ( gameOn ) {
-			GameLoop();
+			GameLoop(Ticks - gLastTick);
+			gLastTick = Ticks;
 		}
 	}
 }
 
-void GameLoop( void ) {
+void GameLoop( int steps ) {
 	EraseBall();
-	MoveBall();
 	if ( gameOn ) {
-		MoveOpponent();
+		int i;
+		for (i = 0; i < steps; i++) {
+			MoveBall();
+			MoveOpponent();
+		}
 		DisplayBall();
 	}
 }
@@ -822,6 +842,7 @@ void StartGame( void ) {
 	LaunchBall();
 	
 	gameOn = true;
+	gLastTick = Ticks;
 }
 
 void WriteStrPound ( int which ) {
@@ -868,4 +889,4 @@ void WriteStrPound ( int which ) {
 		}
 	}
 
-}
+}
