@@ -572,7 +572,6 @@ void HandleMouseDown( EventRecord *eventPtr ) {
 				DragWindow( window, eventPtr->where, &screenBits.bounds );
 			}
 			if ( gameOn ) { 
-				DisplayBall();
 				DrawPlayfield( window );
 			}
 			break;
