@@ -30,15 +30,26 @@
 #define		iStartOver		2
 #define		iEndGame		3
 #define		iClose			4
-#define		iQuit			6
+#define		iDifficulty		6
+#define		iQuit			8
 #define	mEdit				kBaseResID+2
 #define	mWindow				kBaseResID+3
 #define	mExtras				kBaseResID+4
 #define		iThink			1
+#define	mDifficulty			100
+#define		iBaby			1
+#define		iEasy			2
+#define		iMedium			3
+#define		iHard			4
+#define		iNightmare		5
 
+#define	kNotANormalMenu		-1
+
+#define	kStartingDifficulty	iMedium
 #define	kBallSize			20
-#define kMaxSpeed			3
 #define	kMinSpeed			1
+#define	kMinNightmareSpeed	3
+#define	kShapeSizeDifficultyModifier	70
 #define	kObjectWidth		8
 #define	kOpponentSpeed		2
 #define	kPaddleHeight		6
@@ -53,6 +64,7 @@
 #define	kPaddlePattern		black
 #define	kWallPattern		dkGray
 #define	kNumShapes			7
+#define	kWinningScore		7
 
 // Function prototypes
 
@@ -76,6 +88,7 @@ void		GameLoop( int steps );
 
 void		HandleAppleChoice( short item );
 void		HandleCloseWindow( WindowPtr window );
+void		HandleDifficultyChoice( short item );
 void		HandleEditChoice( short item );
 void		HandleExtrasChoice( short item );
 void		HandleFileChoice( short item );
@@ -109,10 +122,12 @@ short		gQuitting, gAboutVisible, gThinkVisible = 0;
 short		gameOn, gPlayerScore, gOpponentScore = 0;
 short		gOpponentYPosition, gPaddleHeight;
 int			gLastTick;
+short		gDifficulty;
 
 int main( void ) {
 	InitToolBox();
 	InitMenu();
+	GetDateTime((unsigned long *)(&randSeed));
 	
 	ShowAboutWindow();
 	EventLoop();
@@ -125,11 +140,9 @@ void Bail( void ) {
 }
 
 void ConcatStr255( StringPtr first, StringPtr second ) {
-	Byte *f = first;
-	Byte *s = second;
-	int fl  = *f; 
-	*f      = fl + *s;
-	BlockMove( s + 1, f + fl + 1, 255 - fl );
+	if ( first[0] + second[0] > 255 ) return;
+	BlockMove( &second[1], &first[ first[0] + 1 ], second[0] );
+	first[0] += second[0];
 }
 
 void CreateGameWindows( void ) {
@@ -370,6 +383,7 @@ void EndGame( void ) {
 
 	menu = GetMHandle( mFile );
 	EnableItem( menu, iNew );
+	EnableItem( menu, iDifficulty );
 	DisableItem( menu, iStartOver );
 	DisableItem( menu, iEndGame );
 
@@ -380,8 +394,6 @@ void EndGame( void ) {
 	DisableItem( menu, 4 );
 
 	DisposeGameWindows();
-
-
 }
 
 void EraseBall( void ) {
@@ -401,7 +413,7 @@ short EraseBallInWindow( WindowPtr window ) {
 		GlobalToLocal(&botRight(ball));
 			
 		if ( SectRect( &ball, &win, &sect ) ) {
-			EraseRect( &ball );
+			EraseOval( &ball );
 			return true;
 		} else {
 			return false;
@@ -479,6 +491,21 @@ void HandleCloseWindow( WindowPtr window ) {
 	}
 }
 
+void HandleDifficultyChoice( short item ) { 
+	MenuHandle menuHandle;
+
+	menuHandle = GetMHandle( mDifficulty );
+	gDifficulty = item;
+
+	CheckItem( menuHandle, iBaby, gDifficulty == iBaby );
+	CheckItem( menuHandle, iEasy, gDifficulty == iEasy );
+	CheckItem( menuHandle, iMedium, gDifficulty == iMedium );
+	CheckItem( menuHandle, iHard, gDifficulty == iHard );
+	CheckItem( menuHandle, iNightmare, gDifficulty == iNightmare );
+	
+	return;
+}
+
 void HandleEditChoice( short item ) { 
 	return;
 }
@@ -541,6 +568,8 @@ void HandleMenuChoice( long menuChoice ) {
 			case mExtras:
 				HandleExtrasChoice( item );
 				break;
+			case mDifficulty:
+				HandleDifficultyChoice( item );
 		}
 	HiliteMenu( 0 );
 	}
@@ -596,6 +625,11 @@ void InitMenu( void ){
 	
 	menu = GetMHandle( mApple );
 	AddResMenu( menu, 'DRVR' );
+	
+	menu = GetMenu( mDifficulty );
+	InsertMenu( menu, kNotANormalMenu );
+	CheckItem( menu, kStartingDifficulty, true );
+	gDifficulty = kStartingDifficulty;
 		
 	DrawMenuBar();
 }
@@ -606,9 +640,15 @@ void InitOpponent( void ) {
 }
 
 void InitShapes( void ) {
+	short playerPaddleHeight;
+	short difficulty = kShapeSizeDifficultyModifier + gDifficulty * 10;
+
 	short goalHeight = screenBits.bounds.bottom / kGoalHeight;
+	goalHeight = goalHeight * 100 / difficulty;
 	
 	gPaddleHeight = screenBits.bounds.bottom / kPaddleHeight;
+	playerPaddleHeight = gPaddleHeight;
+	gPaddleHeight = gPaddleHeight * difficulty / 100;
 
 	gShapes[0].top = 1;
 	gShapes[0].left = 1;
@@ -630,10 +670,10 @@ void InitShapes( void ) {
 	gShapes[4].right = gWindows[ kTopWindow ]->portRect.right - 1;
 	gShapes[4].bottom = kObjectWidth;
 	
-	gShapes[5].top = ( gWindows[ kPlayerWindow ]->portRect.bottom - gPaddleHeight ) / 2;
+	gShapes[5].top = ( gWindows[ kPlayerWindow ]->portRect.bottom - playerPaddleHeight ) / 2;
 	gShapes[5].left = gWindows[ kPlayerWindow ]->portRect.right - kObjectWidth;
 	gShapes[5].right = gWindows[ kPlayerWindow ]->portRect.right - 1;
-	gShapes[5].bottom = gShapes[5].top + gPaddleHeight;
+	gShapes[5].bottom = gShapes[5].top + playerPaddleHeight;
 	
 	gShapes[6].top = gWindows[ kBottomWindow ]->portRect.bottom - kObjectWidth;
 	gShapes[6].left = 1;
@@ -653,15 +693,24 @@ void InitToolBox( void ) {
 }
 
 void LaunchBall( void ) {
-    GetDateTime((unsigned long *)(&randSeed));
+	
 	RandomRect( &gBall );
-	gHorizontal = Randomize( kMaxSpeed );
-	if ( gHorizontal < kMinSpeed )
+	gHorizontal = Randomize( gDifficulty );
+	if ( gHorizontal < kMinSpeed  )
 		gHorizontal = kMinSpeed;
+	if ( gDifficulty == iNightmare && gHorizontal < kMinNightmareSpeed ) 
+		gHorizontal = kMinNightmareSpeed;
+	if ( gPlayerScore + gOpponentScore > kWinningScore ) gHorizontal++;
+
 	gHorizontal = -gHorizontal; // Always start with ball moving toward opponent.
-	gVertical = Randomize( kMaxSpeed );
+
+	gVertical = Randomize( gDifficulty );
 	if ( gVertical < kMinSpeed )
 		gVertical = kMinSpeed;
+	if ( gDifficulty == iNightmare && gVertical < kMinNightmareSpeed ) 
+		gVertical = kMinNightmareSpeed;
+	if ( gPlayerScore + gOpponentScore > kWinningScore ) gVertical++;
+
 	
 	if ( gBall.top > screenBits.bounds.bottom / 2 ) 
 		gVertical = -gVertical;
@@ -730,7 +779,9 @@ void MoveOpponent( void ) {
 	short ballYPosition;
 	Rect ball = gBall;
 	Rect eraseMe;
-		
+
+	if ( ( Ticks % ( gDifficulty + 1 ) ) == 0 ) return;
+	
 	SetPort( gWindows[ kMultiPongWindow ] );
 
 	GlobalToLocal(&topLeft(ball));
@@ -760,7 +811,6 @@ void MoveOpponent( void ) {
 	eraseMe.left = gShapes[3].left;
 	eraseMe.right = gShapes[3].right;
 	EraseRect( &eraseMe );
-	
 }
 
 short Randomize(short range) {
@@ -775,9 +825,9 @@ short Randomize(short range) {
 void RandomRect (Rect *rectPtr) {
 	WindowPtr	window;
 	window = gWindows[ kMultiPongWindow ];
-	rectPtr->left   = Randomize(( window->portRect.right / 2) - ( kBallSize * 2) ) + (window->portRect.right / 2);
+	rectPtr->left   = Randomize(( window->portRect.right / 2) ) + (window->portRect.right / 2) - ( kBallSize ) ;
 	rectPtr->right  = rectPtr->left + kBallSize;
-	rectPtr->top    = Randomize(window->portRect.bottom - kBallSize );
+	rectPtr->top    = Randomize(window->portRect.bottom - - kBallSize * 2) + kBallSize;
 	rectPtr->bottom  = rectPtr->top + kBallSize;
 }
 
@@ -785,7 +835,7 @@ void ScoreOpponent( void ) {
 	gOpponentScore++;
 	SysBeep( 10 );
 	
-	if ( gPlayerScore < 7 && gOpponentScore < 7 ) {
+	if ( gPlayerScore < kWinningScore && gOpponentScore < kWinningScore ) {
 		DisposeGameWindows();
 		CreateGameWindows();
 		DisplayScore();
@@ -800,7 +850,7 @@ void ScorePlayer( void ) {
 	gPlayerScore++;
 	SysBeep( 10 );
 	
-	if ( gPlayerScore < 7 && gOpponentScore < 7 ) {
+	if ( gPlayerScore < kWinningScore && gOpponentScore < kWinningScore ) {
 		DisposeGameWindows();
 		CreateGameWindows();
 		DisplayScore();
@@ -828,6 +878,7 @@ void StartGame( void ) {
 	gPlayerScore = gOpponentScore = 0;
 	menu = GetMHandle( mFile );
 	DisableItem( menu, iNew );
+	DisableItem( menu, iDifficulty );
 	EnableItem( menu, iStartOver );
 	EnableItem( menu, iEndGame );
 	
