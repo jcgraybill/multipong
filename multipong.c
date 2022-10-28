@@ -441,8 +441,8 @@ void EventLoop( void ) {
 					break;
 			}
 		} else if ( gameOn ) {
-			GameLoop(Ticks - gLastTick);
-			gLastTick = Ticks;
+			GameLoop(TickCount() - gLastTick);
+			gLastTick = TickCount();
 		}
 	}
 }
@@ -780,7 +780,7 @@ void MoveOpponent( void ) {
 	Rect ball = gBall;
 	Rect eraseMe;
 
-	if ( ( Ticks % ( gDifficulty + 1 ) ) == 0 ) return;
+	if ( ( TickCount() % ( gDifficulty + 1 ) ) == 0 ) return;
 	
 	SetPort( gWindows[ kMultiPongWindow ] );
 
@@ -892,7 +892,7 @@ void StartGame( void ) {
 	LaunchBall();
 	
 	gameOn = true;
-	gLastTick = Ticks;
+	gLastTick = TickCount();
 }
 
 void WriteStrPound ( int which ) {
