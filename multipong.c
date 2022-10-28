@@ -104,6 +104,7 @@ void		InitToolBox( void );
 void		LaunchBall( void );
 void		MoveBall( void );
 void		MoveOpponent( void );
+void 		MyDragHook( void );
 short		Randomize( short range );
 void		RandomRect( Rect *rectPtr );
 void		ScoreOpponent( void );
@@ -128,7 +129,8 @@ int main( void ) {
 	InitToolBox();
 	InitMenu();
 	GetDateTime((unsigned long *)(&randSeed));
-	
+	DragHook = (ProcPtr) MyDragHook;
+		
 	ShowAboutWindow();
 	EventLoop();
 	return 0;
@@ -185,7 +187,6 @@ void CreateGameWindows( void ) {
 	for ( i = 0; i < kNumGameWindows ; i++ ) {
 		DrawPlayfield( gWindows[i] );
 	}
-
 }
 
 WindowPtr CreateWindow( int whichOne ) {
@@ -594,7 +595,6 @@ void HandleMouseDown( EventRecord *eventPtr ) {
 			SelectWindow( window );
 			break;
 		case inDrag:
-			if ( gameOn ) EraseBall(); // hide the ball while player is dragging windows
 			if ( GetWRefCon( window ) == kMultiPongWindow ) { 
 				SelectWindow( window ) ;
 			} else {
@@ -811,6 +811,17 @@ void MoveOpponent( void ) {
 	eraseMe.left = gShapes[3].left;
 	eraseMe.right = gShapes[3].right;
 	EraseRect( &eraseMe );
+}
+
+void MyDragHook( void ) {
+	GrafPtr oldPort;
+
+	if ( gameOn ) {
+		GetPort( &oldPort );
+		GameLoop(TickCount() - gLastTick);
+		gLastTick = TickCount();
+		SetPort( oldPort );
+	}
 }
 
 short Randomize(short range) {
